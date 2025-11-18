@@ -177,10 +177,12 @@ asyncio.run(chat_completion())
 - `deepseek-chat` - 通用对话模型
 - `deepseek-coder` - 代码生成模型
 
-### OpenAI（可选）
+### OpenAI（可选，使用官方SDK）
 - `gpt-4`
 - `gpt-4-turbo`
 - `gpt-3.5-turbo`
+
+**注意**: OpenAI 适配器使用官方的 `openai` Python SDK，需要安装 `openai>=1.0.0` 包。
 
 ## 配置说明
 

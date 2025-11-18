@@ -7,6 +7,7 @@ python-jose==3.3.0
 python-multipart==0.0.6
 loguru==0.7.2
 aiosqlite==0.19.0
+openai>=1.0.0
 
 # 注意：此版本使用纯Python实现，不需要Rust编译
 # - uvicorn: 不使用[standard]扩展（避免httptools和uvloop的Rust依赖）
