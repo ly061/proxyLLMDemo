@@ -58,10 +58,38 @@ async def init_db():
             )
         """)
         
+        # 创建请求记录表（用于记录token消耗）
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS api_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                api_key_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                model TEXT NOT NULL,
+                user_query TEXT,
+                prompt_tokens INTEGER DEFAULT 0,
+                completion_tokens INTEGER DEFAULT 0,
+                total_tokens INTEGER DEFAULT 0,
+                request_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        
+        # 如果表已存在但没有user_query字段，则添加该字段
+        try:
+            await db.execute("ALTER TABLE api_requests ADD COLUMN user_query TEXT")
+            await db.commit()
+        except Exception:
+            # 字段已存在，忽略错误
+            pass
+        
         # 创建索引
         await db.execute("CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON api_keys(user_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_api_key_active ON api_keys(api_key, is_active)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_requests_api_key_id ON api_requests(api_key_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_requests_user_id ON api_requests(user_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_requests_time ON api_requests(request_time)")
         
         await db.commit()
         logger.info(f"数据库初始化完成: {DB_PATH}")
@@ -119,6 +147,7 @@ async def check_api_key(api_key: str) -> dict:
             
             return {
                 'id': row['id'],
+                'api_key_id': row['id'],  # api_key的id
                 'user_id': row['user_id'],
                 'username': row['username'],
                 'email': row['email'],
@@ -126,4 +155,34 @@ async def check_api_key(api_key: str) -> dict:
                 'api_key': row['api_key']
             }
         return None
+
+
+async def record_request(
+    api_key_id: int,
+    user_id: int,
+    model: str,
+    user_query: str = None,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    total_tokens: int = 0
+):
+    """
+    记录API请求的token消耗情况
+    
+    Args:
+        api_key_id: API Key的ID
+        user_id: 用户ID
+        model: 使用的模型名称
+        user_query: 用户的问题/消息内容
+        prompt_tokens: 提示token数
+        completion_tokens: 完成token数
+        total_tokens: 总token数
+    """
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        await db.execute("""
+            INSERT INTO api_requests 
+            (api_key_id, user_id, model, user_query, prompt_tokens, completion_tokens, total_tokens)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (api_key_id, user_id, model, user_query, prompt_tokens, completion_tokens, total_tokens))
+        await db.commit()
 

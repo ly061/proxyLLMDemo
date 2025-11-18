@@ -221,6 +221,17 @@ async def get_stats():
         cursor = await db.execute("SELECT COUNT(*) as total FROM api_keys WHERE is_active = 1")
         active_keys = (await cursor.fetchone())["total"]
         
+        # Token使用统计
+        cursor = await db.execute("""
+            SELECT 
+                COUNT(*) as total_requests,
+                SUM(total_tokens) as total_tokens,
+                SUM(prompt_tokens) as total_prompt_tokens,
+                SUM(completion_tokens) as total_completion_tokens
+            FROM api_requests
+        """)
+        token_stats = await cursor.fetchone()
+        
         return {
             "users": {
                 "total": total_users,
@@ -229,6 +240,139 @@ async def get_stats():
             "api_keys": {
                 "total": total_keys,
                 "active": active_keys
+            },
+            "token_usage": {
+                "total_requests": token_stats["total_requests"] or 0,
+                "total_tokens": token_stats["total_tokens"] or 0,
+                "total_prompt_tokens": token_stats["total_prompt_tokens"] or 0,
+                "total_completion_tokens": token_stats["total_completion_tokens"] or 0
             }
         }
+
+
+@router.get("/usage")
+async def get_usage(
+    user_id: Optional[int] = None,
+    api_key_id: Optional[int] = None,
+    limit: int = 100
+):
+    """
+    获取token使用记录
+    
+    Args:
+        user_id: 用户ID（可选）
+        api_key_id: API Key ID（可选）
+        limit: 返回记录数限制（默认100）
+    """
+    async for db in get_db():
+        query = """
+            SELECT 
+                ar.id,
+                ar.api_key_id,
+                ar.user_id,
+                ar.model,
+                ar.user_query,
+                ar.prompt_tokens,
+                ar.completion_tokens,
+                ar.total_tokens,
+                ar.request_time,
+                u.username,
+                ak.key_name
+            FROM api_requests ar
+            JOIN users u ON ar.user_id = u.id
+            JOIN api_keys ak ON ar.api_key_id = ak.id
+            WHERE 1=1
+        """
+        params = []
+        
+        if user_id:
+            query += " AND ar.user_id = ?"
+            params.append(user_id)
+        
+        if api_key_id:
+            query += " AND ar.api_key_id = ?"
+            params.append(api_key_id)
+        
+        query += " ORDER BY ar.request_time DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor = await db.execute(query, params)
+        rows = await cursor.fetchall()
+        
+        return [
+            {
+                "id": row["id"],
+                "api_key_id": row["api_key_id"],
+                "user_id": row["user_id"],
+                "username": row["username"],
+                "key_name": row["key_name"],
+                "model": row["model"],
+                "user_query": row["user_query"],
+                "prompt_tokens": row["prompt_tokens"],
+                "completion_tokens": row["completion_tokens"],
+                "total_tokens": row["total_tokens"],
+                "request_time": row["request_time"]
+            }
+            for row in rows
+        ]
+
+
+@router.get("/usage/summary")
+async def get_usage_summary(
+    user_id: Optional[int] = None,
+    api_key_id: Optional[int] = None
+):
+    """
+    获取token使用汇总统计
+    
+    Args:
+        user_id: 用户ID（可选）
+        api_key_id: API Key ID（可选）
+    """
+    async for db in get_db():
+        query = """
+            SELECT 
+                COUNT(*) as total_requests,
+                SUM(prompt_tokens) as total_prompt_tokens,
+                SUM(completion_tokens) as total_completion_tokens,
+                SUM(total_tokens) as total_tokens,
+                AVG(total_tokens) as avg_tokens_per_request,
+                MIN(request_time) as first_request,
+                MAX(request_time) as last_request
+            FROM api_requests
+            WHERE 1=1
+        """
+        params = []
+        
+        if user_id:
+            query += " AND user_id = ?"
+            params.append(user_id)
+        
+        if api_key_id:
+            query += " AND api_key_id = ?"
+            params.append(api_key_id)
+        
+        cursor = await db.execute(query, params)
+        row = await cursor.fetchone()
+        
+        if row and row["total_requests"]:
+            return {
+                "total_requests": row["total_requests"],
+                "total_prompt_tokens": row["total_prompt_tokens"] or 0,
+                "total_completion_tokens": row["total_completion_tokens"] or 0,
+                "total_tokens": row["total_tokens"] or 0,
+                "avg_tokens_per_request": round(row["avg_tokens_per_request"] or 0, 2),
+                "first_request": row["first_request"],
+                "last_request": row["last_request"]
+            }
+        else:
+            return {
+                "total_requests": 0,
+                "total_prompt_tokens": 0,
+                "total_completion_tokens": 0,
+                "total_tokens": 0,
+                "avg_tokens_per_request": 0,
+                "first_request": None,
+                "last_request": None
+            }
 

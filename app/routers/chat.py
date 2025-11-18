@@ -7,10 +7,11 @@ from pydantic import BaseModel, Field
 from app.adapters.base import ChatMessage, ChatCompletionResponse, BaseLLMAdapter
 from app.adapters.deepseek_adapter import DeepSeekAdapter
 from app.adapters.openai_adapter import OpenAIAdapter
-from app.auth.api_key import verify_api_key
+from app.auth.api_key import verify_api_key, get_user_info
 from app.config import settings
 from app.utils.cache import cache, cache_key_generator
 from app.utils.logger import logger
+from app.database.db import record_request
 
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
@@ -78,7 +79,7 @@ def get_adapter(model: Optional[str] = None) -> BaseLLMAdapter:
 @router.post("/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(
     request: ChatCompletionRequest,
-    api_key: str = Depends(verify_api_key)
+    user_info: dict = Depends(get_user_info)
 ):
     """
     聊天完成接口（兼容OpenAI格式）
@@ -119,6 +120,35 @@ async def chat_completions(
         # 缓存结果
         if cache_key:
             cache.set(cache_key, response)
+        
+        # 记录token消耗情况
+        if user_info.get('api_key_id') and user_info.get('user_id') and response.usage:
+            try:
+                usage = response.usage
+                if isinstance(usage, dict):
+                    # 提取用户的问题（取最后一条user角色的消息）
+                    user_query = None
+                    if request.messages:
+                        # 从后往前查找最后一条user消息
+                        for msg in reversed(request.messages):
+                            if msg.get('role') == 'user':
+                                user_query = msg.get('content', '')
+                                break
+                        # 如果没找到user消息，取第一条消息的内容
+                        if not user_query and request.messages:
+                            user_query = request.messages[0].get('content', '')
+                    
+                    await record_request(
+                        api_key_id=user_info['api_key_id'],
+                        user_id=user_info['user_id'],
+                        model=response.model,
+                        user_query=user_query,
+                        prompt_tokens=usage.get('prompt_tokens', 0),
+                        completion_tokens=usage.get('completion_tokens', 0),
+                        total_tokens=usage.get('total_tokens', 0)
+                    )
+            except Exception as e:
+                logger.error(f"记录token消耗失败: {str(e)}")
         
         logger.info(f"聊天完成: model={response.model}, choices={len(response.choices)}")
         return response

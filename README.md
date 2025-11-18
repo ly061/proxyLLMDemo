@@ -76,6 +76,14 @@ curl -X POST "http://localhost:8000/api/v1/admin/api-keys" \
 - 删除 API Key：`DELETE /api/v1/admin/api-keys/{key_id}`
 - 查看统计信息：`GET /api/v1/admin/stats`
 
+**Token 使用统计**：
+
+系统会自动记录每次 API 调用的 token 消耗情况：
+
+- 查看使用记录：`GET /api/v1/admin/usage?user_id=1&limit=100`
+- 查看使用汇总：`GET /api/v1/admin/usage/summary?user_id=1`
+- 按 API Key 查询：`GET /api/v1/admin/usage?api_key_id=1`
+
 **使用 API Key**：
 
 创建 API Key 后，在请求头中添加 `X-API-Key`：

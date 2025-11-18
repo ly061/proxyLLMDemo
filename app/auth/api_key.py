@@ -11,15 +11,15 @@ from app.database.db import check_api_key
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-async def verify_api_key(api_key: Optional[str] = Security(api_key_header)) -> str:
+async def get_user_info(api_key: Optional[str] = Security(api_key_header)) -> dict:
     """
-    验证API Key
+    获取API Key对应的用户信息
     
     Args:
         api_key: 从请求头获取的API Key
         
     Returns:
-        验证通过的API Key
+        包含用户信息的字典
         
     Raises:
         HTTPException: API Key无效时抛出401错误
@@ -41,7 +41,7 @@ async def verify_api_key(api_key: Optional[str] = Security(api_key_header)) -> s
                 detail="无效的API Key或Key已过期"
             )
         logger.info(f"API Key验证成功: 用户={user_info['username']}, Key={api_key[:10]}...")
-        return api_key
+        return user_info
     
     # 兼容旧的环境变量配置方式（已废弃）
     if settings.API_KEYS and api_key not in settings.API_KEYS:
@@ -52,9 +52,31 @@ async def verify_api_key(api_key: Optional[str] = Security(api_key_header)) -> s
         )
     
     # 如果没有配置API_KEYS列表，则允许任何非空的API Key
-    # 这在开发环境中可能有用，但生产环境应该配置API_KEYS
     if not settings.API_KEYS:
         logger.warning("警告: 未配置API_KEYS列表，允许所有请求")
     
     logger.info(f"API Key验证成功: {api_key[:10]}...")
-    return api_key
+    # 返回一个默认的用户信息结构（兼容旧方式）
+    return {
+        'api_key_id': None,
+        'user_id': None,
+        'username': 'anonymous',
+        'api_key': api_key
+    }
+
+
+async def verify_api_key(api_key: Optional[str] = Security(api_key_header)) -> str:
+    """
+    验证API Key（兼容旧接口）
+    
+    Args:
+        api_key: 从请求头获取的API Key
+        
+    Returns:
+        验证通过的API Key
+        
+    Raises:
+        HTTPException: API Key无效时抛出401错误
+    """
+    user_info = await get_user_info(api_key)
+    return user_info.get('api_key', api_key)
