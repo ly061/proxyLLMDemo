@@ -6,8 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.logging import LoggingMiddleware
-from app.routers import chat, models
+from app.routers import chat, models, admin
 from app.utils.logger import logger
+from app.database.db import init_db
 
 
 # 创建FastAPI应用
@@ -37,6 +38,7 @@ if settings.RATE_LIMIT_ENABLED:
 # 注册路由
 app.include_router(chat.router)
 app.include_router(models.router)
+app.include_router(admin.router)
 
 
 @app.get("/")
@@ -65,11 +67,16 @@ async def startup_event():
     logger.info(f"{settings.APP_NAME} v{settings.APP_VERSION} 启动成功")
     logger.info(f"服务器运行在 http://{settings.HOST}:{settings.PORT}")
     
+    # 初始化数据库
+    if settings.USE_DATABASE_AUTH:
+        await init_db()
+        logger.info("数据库认证已启用")
+    else:
+        logger.warning("警告: 使用环境变量认证（已废弃），建议启用数据库认证")
+    
     # 检查配置
     if not settings.DEEPSEEK_API_KEY:
         logger.warning("警告: DeepSeek API Key未配置")
-    if not settings.API_KEYS:
-        logger.warning("警告: 未配置API_KEYS列表，所有请求将被允许")
 
 
 @app.on_event("shutdown")

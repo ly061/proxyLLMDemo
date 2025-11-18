@@ -34,29 +34,58 @@ cp .env.example .env
 # DeepSeek API Key（必需）
 DEEPSEEK_API_KEY=your-deepseek-api-key
 
-# API认证密钥（必需）
-API_KEYS=your-api-key-1,your-api-key-2
+# API认证配置（推荐使用数据库认证）
+USE_DATABASE_AUTH=true
+DATABASE_PATH=data/api_keys.db
 ```
 
-**生成 API Key**：
+**API Key 管理（数据库认证）**：
 
-你可以使用项目提供的工具脚本生成安全的 API Key：
+服务默认使用 SQLite 数据库进行 API Key 认证。首次启动时会自动创建数据库。
+
+**创建用户和 API Key**：
+
+1. 启动服务后，访问 http://localhost:8000/docs 查看 API 文档
+
+2. 使用管理 API 创建用户：
+```bash
+curl -X POST "http://localhost:8000/api/v1/admin/users" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "email": "test@example.com"
+  }'
+```
+
+3. 为用户创建 API Key：
+```bash
+curl -X POST "http://localhost:8000/api/v1/admin/api-keys" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": 1,
+    "key_name": "我的API Key"
+  }'
+```
+
+返回的 `api_key` 字段就是你的 API Key，请妥善保管。
+
+**查看和管理 API Key**：
+
+- 查看所有用户：`GET /api/v1/admin/users`
+- 查看所有 API Key：`GET /api/v1/admin/api-keys`
+- 删除 API Key：`DELETE /api/v1/admin/api-keys/{key_id}`
+- 查看统计信息：`GET /api/v1/admin/stats`
+
+**使用 API Key**：
+
+创建 API Key 后，在请求头中添加 `X-API-Key`：
 
 ```bash
-# 生成单个 API Key
-python generate_api_key.py
-
-# 生成多个 API Key
-python generate_api_key.py --count 3
-
-# 直接输出为环境变量格式
-python generate_api_key.py --count 2 --format env
-
-# 生成更长的 API Key（64字符）
-python generate_api_key.py --length 64
+curl -X POST "http://localhost:8000/api/v1/chat/completions" \
+  -H "X-API-Key: your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{...}'
 ```
-
-生成的 API Key 会自动使用加密安全的随机数生成器，确保安全性。
 
 ### 3. 启动服务
 
@@ -158,7 +187,19 @@ asyncio.run(chat_completion())
 ### 必需配置
 
 - `DEEPSEEK_API_KEY`: DeepSeek API密钥
-- `API_KEYS`: 允许访问服务的API Key列表（逗号分隔）
+
+### API 认证配置
+
+**推荐方式：数据库认证（默认）**
+
+- `USE_DATABASE_AUTH`: 是否使用数据库认证（默认：true）
+- `DATABASE_PATH`: SQLite数据库路径（默认：data/api_keys.db）
+
+首次启动服务时会自动创建数据库。使用管理API创建用户和API Key。
+
+**旧方式：环境变量认证（已废弃）**
+
+- `API_KEYS`: 允许访问服务的API Key列表（逗号分隔，已废弃）
 
 ### 可选配置
 

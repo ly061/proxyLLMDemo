@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     PORT: int = 8000
     
     # API认证配置
-    API_KEYS: List[str] = Field(default_factory=list)  # 允许的API Key列表
+    API_KEYS: List[str] = Field(default_factory=list)  # 允许的API Key列表（已废弃，改用数据库）
+    USE_DATABASE_AUTH: bool = True  # 是否使用数据库进行API Key认证
+    DATABASE_PATH: str = "data/api_keys.db"  # SQLite数据库路径
     JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60 * 24  # 24小时
