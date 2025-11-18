@@ -1,0 +1,14 @@
+# 简化版依赖（纯Python实现，不需要Rust编译）
+# 注意：这个版本性能较带Rust优化的版本略低，适合开发和测试环境
+
+fastapi==0.104.1
+uvicorn==0.24.0
+# 使用pydantic v1（纯Python，不需要Rust）
+# Pydantic v1 内置 BaseSettings，无需单独的 pydantic-settings 包
+pydantic==1.10.13
+httpx==0.25.1
+# 不使用cryptography扩展（纯Python实现）
+python-jose==3.3.0
+python-multipart==0.0.6
+loguru==0.7.2
+

@@ -1,0 +1,18 @@
+fastapi==0.99.1
+uvicorn==0.24.0
+pydantic>=1.10.14,<2.0
+python-dotenv==1.0.0
+httpx==0.25.1
+python-jose==3.3.0
+python-multipart==0.0.6
+loguru==0.7.2
+
+# 注意：此版本使用纯Python实现，不需要Rust编译
+# - uvicorn: 不使用[standard]扩展（避免httptools和uvloop的Rust依赖）
+# - pydantic v1: 纯Python实现，使用内置的BaseSettings（无需pydantic-settings）
+# - python-jose: 不使用cryptography扩展，使用纯Python实现
+# 
+# 性能说明：
+# - 此配置适合开发和测试环境
+# - 生产环境建议使用带Rust优化的版本以获得更好性能
+
