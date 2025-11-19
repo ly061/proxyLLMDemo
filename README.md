@@ -151,7 +151,51 @@ curl -X GET "http://localhost:8000/api/v1/models" \
   -H "X-API-Key: your-api-key-1"
 ```
 
-### 3. Python客户端示例
+### 3. 任务规划接口
+
+将任务拆分成步骤：
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/plan" \
+  -H "X-API-Key: your-api-key-1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task": "开发一个待办事项管理应用",
+    "max_steps": 8,
+    "temperature": 0.7
+  }'
+```
+
+**响应示例**：
+```json
+{
+  "task": "开发一个待办事项管理应用",
+  "steps": [
+    {
+      "step_number": 1,
+      "title": "需求分析与规划",
+      "description": "明确应用的核心功能，如添加任务、标记完成、删除任务等",
+      "estimated_time": "2-3小时"
+    },
+    {
+      "step_number": 2,
+      "title": "UI/UX设计",
+      "description": "设计应用界面和用户交互流程",
+      "estimated_time": "3-4小时"
+    }
+  ],
+  "total_steps": 8,
+  "model": "deepseek-chat"
+}
+```
+
+**请求参数**：
+- `task` (必需): 要拆分的任务描述
+- `model` (可选): 模型名称，默认使用deepseek-chat
+- `temperature` (可选): 温度参数，默认0.7
+- `max_steps` (可选): 最大步骤数，默认10，范围1-50
+
+### 4. Python客户端示例
 
 ```python
 import httpx

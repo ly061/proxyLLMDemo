@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.logging import LoggingMiddleware
-from app.routers import chat, models, admin
+from app.routers import chat, models, admin, plan
 from app.utils.logger import logger
 from app.database.db import init_db
 
@@ -39,6 +39,7 @@ if settings.RATE_LIMIT_ENABLED:
 app.include_router(chat.router)
 app.include_router(models.router)
 app.include_router(admin.router)
+app.include_router(plan.router)
 
 
 @app.get("/")
