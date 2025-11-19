@@ -1,15 +1,30 @@
 """
-DeepSeek LLM适配器
+DeepSeek LLM适配器（使用OpenAI SDK）
 """
-import httpx
-import time
 from typing import List, Optional
+from openai import AsyncOpenAI
 from app.adapters.base import BaseLLMAdapter, ChatMessage, ChatCompletionResponse
 from app.utils.logger import logger
 
 
 class DeepSeekAdapter(BaseLLMAdapter):
-    """DeepSeek适配器实现"""
+    """DeepSeek适配器实现（使用OpenAI SDK，DeepSeek API兼容OpenAI格式）"""
+    
+    def __init__(self, api_key: str, base_url: str, default_model: str):
+        """
+        初始化DeepSeek适配器
+        
+        Args:
+            api_key: DeepSeek API密钥
+            base_url: API基础URL
+            default_model: 默认模型名称
+        """
+        super().__init__(api_key, base_url, default_model)
+        # 初始化OpenAI客户端（DeepSeek API兼容OpenAI格式）
+        self.client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url
+        )
     
     async def chat_completion(
         self,
@@ -21,74 +36,79 @@ class DeepSeekAdapter(BaseLLMAdapter):
         **kwargs
     ) -> ChatCompletionResponse:
         """
-        发送聊天完成请求到DeepSeek API
+        发送聊天完成请求到DeepSeek API（使用OpenAI SDK）
         """
         if not self.api_key:
             raise ValueError("DeepSeek API Key未配置")
         
         model = model or self.default_model
-        url = f"{self.base_url}/chat/completions"
         
-        # 构建请求体
-        payload = {
+        # 构建请求参数
+        request_params = {
             "model": model,
             "messages": [{"role": msg.role, "content": msg.content} for msg in messages],
             "temperature": temperature,
         }
         
         if max_tokens:
-            payload["max_tokens"] = max_tokens
-        
+            request_params["max_tokens"] = max_tokens
         if stream:
-            payload["stream"] = stream
-        
-        # 添加其他参数
+            request_params["stream"] = stream
         if "top_p" in kwargs:
-            payload["top_p"] = kwargs["top_p"]
+            request_params["top_p"] = kwargs["top_p"]
         if "frequency_penalty" in kwargs:
-            payload["frequency_penalty"] = kwargs["frequency_penalty"]
+            request_params["frequency_penalty"] = kwargs["frequency_penalty"]
         if "presence_penalty" in kwargs:
-            payload["presence_penalty"] = kwargs["presence_penalty"]
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+            request_params["presence_penalty"] = kwargs["presence_penalty"]
         
         try:
             logger.info(f"发送请求到DeepSeek: model={model}, messages_count={len(messages)}")
             
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
-                
-                result = response.json()
-                
-                # 处理usage字段，只保留简单的整数键值对
-                usage = result.get("usage")
-                if usage and isinstance(usage, dict):
-                    # 只保留值为整数的字段，忽略嵌套对象
-                    clean_usage = {
-                        k: v for k, v in usage.items() 
-                        if isinstance(v, (int, float))
+            # 使用OpenAI SDK调用API（DeepSeek API兼容OpenAI格式）
+            response = await self.client.chat.completions.create(**request_params)
+            
+            # 处理流式响应
+            if stream:
+                # 流式响应需要特殊处理，这里先返回第一个chunk
+                # 实际应用中可能需要返回生成器
+                raise NotImplementedError("流式响应暂未实现，请设置 stream=False")
+            
+            # 处理usage字段，只保留简单的整数键值对
+            usage = None
+            if response.usage:
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
+                # DeepSeek可能返回额外的usage字段，如果存在也包含进去
+                if hasattr(response.usage, 'prompt_cache_hit_tokens'):
+                    usage["prompt_cache_hit_tokens"] = response.usage.prompt_cache_hit_tokens
+                if hasattr(response.usage, 'prompt_cache_miss_tokens'):
+                    usage["prompt_cache_miss_tokens"] = response.usage.prompt_cache_miss_tokens
+            
+            # 转换为统一格式
+            return ChatCompletionResponse(
+                id=response.id,
+                created=response.created,
+                model=response.model,
+                choices=[
+                    {
+                        "index": choice.index,
+                        "message": {
+                            "role": choice.message.role,
+                            "content": choice.message.content
+                        },
+                        "finish_reason": choice.finish_reason
                     }
-                    usage = clean_usage if clean_usage else None
-                
-                # 转换为统一格式
-                return ChatCompletionResponse(
-                    id=result.get("id", f"deepseek-{int(time.time())}"),
-                    created=result.get("created", int(time.time())),
-                    model=result.get("model", model),
-                    choices=result.get("choices", []),
-                    usage=usage
-                )
+                    for choice in response.choices
+                ],
+                usage=usage
+            )
         
-        except httpx.HTTPStatusError as e:
-            logger.error(f"DeepSeek API错误: {e.response.status_code} - {e.response.text}")
-            raise Exception(f"DeepSeek API错误: {e.response.status_code}")
         except Exception as e:
             logger.error(f"DeepSeek请求失败: {str(e)}")
-            raise
+            raise Exception(f"DeepSeek API错误: {str(e)}")
     
     async def list_models(self) -> List[str]:
         """获取DeepSeek可用模型列表"""

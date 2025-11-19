@@ -181,16 +181,18 @@ asyncio.run(chat_completion())
 
 ## 支持的模型
 
-### DeepSeek
+### DeepSeek（使用OpenAI SDK）
 - `deepseek-chat` - 通用对话模型
 - `deepseek-coder` - 代码生成模型
+
+**注意**: DeepSeek API 兼容 OpenAI API 格式，使用官方的 `openai` Python SDK 实现。
 
 ### OpenAI（可选，使用官方SDK）
 - `gpt-4`
 - `gpt-4-turbo`
 - `gpt-3.5-turbo`
 
-**注意**: OpenAI 适配器使用官方的 `openai` Python SDK，需要安装 `openai>=1.0.0` 包。
+**注意**: 所有适配器都使用官方的 `openai` Python SDK，需要安装 `openai>=1.0.0` 包。
 
 ## 配置说明
 
