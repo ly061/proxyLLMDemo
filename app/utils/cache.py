@@ -1,48 +1,64 @@
 """
-缓存工具模块
+缓存工具模块 - 使用LRU缓存
 """
 import hashlib
 import json
+import time
 from typing import Optional, Any
 from functools import wraps
+from cachetools import LRUCache, TTLCache
 from app.config import settings
 
 
-class SimpleCache:
-    """简单的内存缓存实现"""
+class LRUCacheWrapper:
+    """LRU缓存包装器，支持TTL和大小限制"""
     
-    def __init__(self):
-        self._cache: dict[str, tuple[Any, float]] = {}
+    def __init__(self, max_size: int = 1000, ttl: int = 3600):
+        """
+        初始化缓存
+        
+        Args:
+            max_size: 最大缓存条目数
+            ttl: 缓存过期时间（秒）
+        """
+        # 使用TTLCache结合LRU策略
+        self._cache = TTLCache(maxsize=max_size, ttl=ttl)
     
     def get(self, key: str) -> Optional[Any]:
         """获取缓存"""
         if not settings.CACHE_ENABLED:
             return None
         
-        if key in self._cache:
-            value, timestamp = self._cache[key]
-            import time
-            if time.time() - timestamp < settings.CACHE_TTL:
-                return value
-            else:
-                del self._cache[key]
-        return None
+        try:
+            return self._cache.get(key)
+        except KeyError:
+            return None
     
     def set(self, key: str, value: Any):
         """设置缓存"""
         if not settings.CACHE_ENABLED:
             return
         
-        import time
-        self._cache[key] = (value, time.time())
+        try:
+            self._cache[key] = value
+        except Exception as e:
+            # 如果缓存已满，LRU会自动淘汰最久未使用的项
+            pass
     
     def clear(self):
         """清空缓存"""
         self._cache.clear()
+    
+    def size(self) -> int:
+        """获取当前缓存大小"""
+        return len(self._cache)
 
 
 # 全局缓存实例
-cache = SimpleCache()
+cache = LRUCacheWrapper(
+    max_size=settings.CACHE_MAX_SIZE,
+    ttl=settings.CACHE_TTL
+)
 
 
 def cache_key_generator(*args, **kwargs) -> str:
@@ -76,5 +92,3 @@ def cached(ttl: Optional[int] = None):
             return result
         return wrapper
     return decorator
-
-

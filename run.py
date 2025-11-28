@@ -18,20 +18,34 @@ def check_python():
 
 def check_dependencies():
     """检查并安装依赖"""
-    try:
-        import fastapi
-        import uvicorn
-        print("✅ 依赖已安装")
-        return True
-    except ImportError:
-        print("⚠️  检测到缺少依赖，正在安装...")
+    required_packages = ["fastapi", "uvicorn", "pydantic", "aiomysql", "redis", "cachetools"]
+    missing_packages = []
+    
+    # 检查所有必需的包
+    for package in required_packages:
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+            __import__(package)
+        except ImportError:
+            missing_packages.append(package)
+    
+    if missing_packages:
+        print(f"⚠️  检测到缺少依赖: {', '.join(missing_packages)}")
+        print("📦 正在安装依赖...")
+        try:
+            # 先升级pip
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], 
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # 安装依赖
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt", "--timeout", "90000"])
             print("✅ 依赖安装完成")
             return True
-        except subprocess.CalledProcessError:
-            print("❌ 依赖安装失败，请手动运行: pip install -r requirements.txt")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ 依赖安装失败: {e}")
+            print("💡 请手动运行: pip install -r requirements.txt")
             return False
+    else:
+        print("✅ 依赖已安装")
+        return True
 
 
 def check_env_file():

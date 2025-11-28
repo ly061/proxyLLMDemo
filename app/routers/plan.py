@@ -4,12 +4,11 @@
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from app.adapters.base import ChatMessage, BaseLLMAdapter
-from app.adapters.deepseek_adapter import DeepSeekAdapter
-from app.adapters.openai_adapter import OpenAIAdapter
+from app.adapters.base import ChatMessage
 from app.auth.api_key import get_user_info
 from app.config import settings
 from app.utils.logger import logger
+from app.utils.adapter_factory import get_adapter
 from app.database.db import record_request
 import json
 
@@ -39,53 +38,6 @@ class PlanResponse(BaseModel):
     steps: List[PlanStep] = Field(..., description="拆分后的步骤列表")
     total_steps: int = Field(..., description="总步骤数")
     model: str = Field(..., description="使用的模型")
-
-
-def get_adapter(model: Optional[str] = None) -> BaseLLMAdapter:
-    """
-    根据模型名称获取对应的适配器
-    
-    Args:
-        model: 模型名称
-        
-    Returns:
-        LLM适配器实例
-    """
-    # 默认使用DeepSeek
-    if not model or model.startswith("deepseek"):
-        if not settings.DEEPSEEK_API_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="DeepSeek API Key未配置"
-            )
-        return DeepSeekAdapter(
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url=settings.DEEPSEEK_BASE_URL,
-            default_model=settings.DEEPSEEK_MODEL
-        )
-    elif model.startswith("gpt") or model.startswith("openai"):
-        if not settings.OPENAI_API_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="OpenAI API Key未配置"
-            )
-        return OpenAIAdapter(
-            api_key=settings.OPENAI_API_KEY,
-            base_url=settings.OPENAI_BASE_URL,
-            default_model=settings.OPENAI_MODEL
-        )
-    else:
-        # 默认使用DeepSeek
-        if not settings.DEEPSEEK_API_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="DeepSeek API Key未配置"
-            )
-        return DeepSeekAdapter(
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url=settings.DEEPSEEK_BASE_URL,
-            default_model=settings.DEEPSEEK_MODEL
-        )
 
 
 def parse_plan_response(response_text: str, max_steps: int) -> List[PlanStep]:
@@ -261,7 +213,7 @@ async def create_plan(
         steps = parse_plan_response(response_text, request.max_steps)
         
         # 记录token消耗情况
-        if user_info.get('api_key_id') and user_info.get('user_id') and response.usage:
+        if user_info.get('api_key_id') is not None and user_info.get('user_id') is not None and response.usage:
             try:
                 usage = response.usage
                 if isinstance(usage, dict):
@@ -289,9 +241,7 @@ async def create_plan(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"任务规划失败: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"处理请求时发生错误: {str(e)}"
-        )
+        logger.error(f"任务规划失败: {str(e)}", exc_info=True)
+        from app.exceptions import LLMServiceException
+        raise LLMServiceException(f"处理请求时发生错误: {str(e)}")
 

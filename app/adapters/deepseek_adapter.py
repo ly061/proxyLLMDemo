@@ -67,11 +67,11 @@ class DeepSeekAdapter(BaseLLMAdapter):
             # 使用OpenAI SDK调用API（DeepSeek API兼容OpenAI格式）
             response = await self.client.chat.completions.create(**request_params)
             
-            # 处理流式响应
+            # 流式响应由调用方处理，这里不处理
             if stream:
-                # 流式响应需要特殊处理，这里先返回第一个chunk
-                # 实际应用中可能需要返回生成器
-                raise NotImplementedError("流式响应暂未实现，请设置 stream=False")
+                # 流式响应应该使用 streaming.py 中的函数处理
+                # 这里不应该被调用
+                raise ValueError("流式响应应该使用 streaming 模块处理")
             
             # 处理usage字段，只保留简单的整数键值对
             usage = None

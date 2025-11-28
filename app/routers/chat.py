@@ -4,13 +4,12 @@
 from typing import Optional, List, Union
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from app.adapters.base import ChatMessage, ChatCompletionResponse, BaseLLMAdapter
-from app.adapters.deepseek_adapter import DeepSeekAdapter
-from app.adapters.openai_adapter import OpenAIAdapter
+from app.adapters.base import ChatMessage, ChatCompletionResponse
 from app.auth.api_key import verify_api_key, get_user_info
 from app.config import settings
 from app.utils.cache import cache, cache_key_generator
 from app.utils.logger import logger
+from app.utils.adapter_factory import get_adapter
 from app.database.db import record_request
 
 
@@ -29,54 +28,7 @@ class ChatCompletionRequest(BaseModel):
     presence_penalty: Optional[float] = Field(None, ge=-2, le=2, description="存在惩罚")
 
 
-def get_adapter(model: Optional[str] = None) -> BaseLLMAdapter:
-    """
-    根据模型名称获取对应的适配器
-    
-    Args:
-        model: 模型名称
-        
-    Returns:
-        LLM适配器实例
-    """
-    # 默认使用DeepSeek
-    if not model or model.startswith("deepseek"):
-        if not settings.DEEPSEEK_API_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="DeepSeek API Key未配置"
-            )
-        return DeepSeekAdapter(
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url=settings.DEEPSEEK_BASE_URL,
-            default_model=settings.DEEPSEEK_MODEL
-        )
-    elif model.startswith("gpt") or model.startswith("openai"):
-        if not settings.OPENAI_API_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="OpenAI API Key未配置"
-            )
-        return OpenAIAdapter(
-            api_key=settings.OPENAI_API_KEY,
-            base_url=settings.OPENAI_BASE_URL,
-            default_model=settings.OPENAI_MODEL
-        )
-    else:
-        # 默认使用DeepSeek
-        if not settings.DEEPSEEK_API_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="DeepSeek API Key未配置"
-            )
-        return DeepSeekAdapter(
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url=settings.DEEPSEEK_BASE_URL,
-            default_model=settings.DEEPSEEK_MODEL
-        )
-
-
-@router.post("/chat/completions", response_model=ChatCompletionResponse)
+@router.post("/chat/completions")
 async def chat_completions(
     request: ChatCompletionRequest,
     user_info: dict = Depends(get_user_info)
@@ -85,7 +37,19 @@ async def chat_completions(
     聊天完成接口（兼容OpenAI格式）
     
     支持DeepSeek和其他LLM提供商
+    支持流式响应（SSE）
     """
+    # 流式响应处理
+    if request.stream:
+        from fastapi.responses import StreamingResponse
+        from app.utils.streaming import stream_chat_completion
+        
+        return StreamingResponse(
+            stream_chat_completion(request, user_info),
+            media_type="text/event-stream"
+        )
+    
+    # 非流式响应
     try:
         # 转换消息格式
         messages = [
@@ -105,13 +69,13 @@ async def chat_completions(
                 logger.info("返回缓存结果")
                 return cached_result
         
-        # 调用LLM
+        # 调用LLM（非流式）
         response = await adapter.chat_completion(
             messages=messages,
             model=request.model,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
-            stream=request.stream,
+            stream=False,  # 非流式响应
             top_p=request.top_p,
             frequency_penalty=request.frequency_penalty,
             presence_penalty=request.presence_penalty
@@ -122,7 +86,7 @@ async def chat_completions(
             cache.set(cache_key, response)
         
         # 记录token消耗情况
-        if user_info.get('api_key_id') and user_info.get('user_id') and response.usage:
+        if user_info.get('api_key_id') is not None and user_info.get('user_id') is not None and response.usage:
             try:
                 usage = response.usage
                 if isinstance(usage, dict):
@@ -153,10 +117,10 @@ async def chat_completions(
         logger.info(f"聊天完成: model={response.model}, choices={len(response.choices)}")
         return response
     
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"聊天完成失败: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"处理请求时发生错误: {str(e)}"
-        )
+        logger.error(f"聊天完成失败: {str(e)}", exc_info=True)
+        from app.exceptions import LLMServiceException
+        raise LLMServiceException(f"处理请求时发生错误: {str(e)}")
 

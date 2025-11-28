@@ -8,6 +8,10 @@ python-multipart==0.0.6
 loguru==0.7.2
 aiosqlite==0.19.0
 openai>=1.0.0
+aiomysql==0.2.0
+redis==5.0.1
+cachetools==5.3.2
+cryptography>=3.4.8  # MySQL认证所需
 
 # 注意：此版本使用纯Python实现，不需要Rust编译
 # - uvicorn: 不使用[standard]扩展（避免httptools和uvloop的Rust依赖）

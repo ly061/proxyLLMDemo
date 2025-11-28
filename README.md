@@ -16,6 +16,22 @@
 
 ### 1. 安装依赖
 
+**方式一：使用启动脚本（推荐，会自动安装依赖）**
+
+启动脚本会自动检查并安装依赖，无需手动安装：
+
+```bash
+# Linux/Mac
+./run.sh
+
+# 或使用Python脚本（跨平台）
+python3 run.py
+```
+
+**方式二：手动安装**
+
+如果需要手动安装依赖：
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -34,9 +50,15 @@ cp .env.example .env
 # DeepSeek API Key（必需）
 DEEPSEEK_API_KEY=your-deepseek-api-key
 
+# MySQL配置（必需，用于数据库认证）
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your-mysql-password
+MYSQL_DATABASE=sonic
+
 # API认证配置（推荐使用数据库认证）
 USE_DATABASE_AUTH=true
-DATABASE_PATH=data/api_keys.db
 ```
 
 **API Key 管理（数据库认证）**：
@@ -108,10 +130,10 @@ python3 run.py
 ```
 
 启动脚本会自动：
-- 检查Python环境
-- 检查并安装依赖
-- 检查配置文件
-- 启动服务
+- ✅ 检查Python环境
+- ✅ **自动检查并安装/更新依赖**
+- ✅ 检查配置文件
+- ✅ 启动服务
 
 **方式二：手动启动**
 

@@ -2,13 +2,13 @@
 模型列表路由
 """
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from app.adapters.deepseek_adapter import DeepSeekAdapter
-from app.adapters.openai_adapter import OpenAIAdapter
 from app.auth.api_key import verify_api_key
 from app.config import settings
 from app.utils.logger import logger
+from app.utils.adapter_factory import get_adapter
+from app.exceptions import LLMServiceException
 
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
@@ -32,35 +32,33 @@ async def list_models(api_key: str = Depends(verify_api_key)):
         
         # DeepSeek模型
         if settings.DEEPSEEK_API_KEY:
-            deepseek_adapter = DeepSeekAdapter(
-                api_key=settings.DEEPSEEK_API_KEY,
-                base_url=settings.DEEPSEEK_BASE_URL,
-                default_model=settings.DEEPSEEK_MODEL
-            )
-            deepseek_models = await deepseek_adapter.list_models()
-            for model_id in deepseek_models:
-                models.append({
-                    "id": model_id,
-                    "object": "model",
-                    "created": 0,
-                    "owned_by": "deepseek"
-                })
+            try:
+                deepseek_adapter = get_adapter("deepseek-chat")
+                deepseek_models = await deepseek_adapter.list_models()
+                for model_id in deepseek_models:
+                    models.append({
+                        "id": model_id,
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": "deepseek"
+                    })
+            except Exception as e:
+                logger.warning(f"获取DeepSeek模型列表失败: {str(e)}")
         
         # OpenAI模型
         if settings.OPENAI_API_KEY:
-            openai_adapter = OpenAIAdapter(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_BASE_URL,
-                default_model=settings.OPENAI_MODEL
-            )
-            openai_models = await openai_adapter.list_models()
-            for model_id in openai_models:
-                models.append({
-                    "id": model_id,
-                    "object": "model",
-                    "created": 0,
-                    "owned_by": "openai"
-                })
+            try:
+                openai_adapter = get_adapter("gpt-3.5-turbo")
+                openai_models = await openai_adapter.list_models()
+                for model_id in openai_models:
+                    models.append({
+                        "id": model_id,
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": "openai"
+                    })
+            except Exception as e:
+                logger.warning(f"获取OpenAI模型列表失败: {str(e)}")
         
         logger.info(f"返回模型列表: {len(models)} 个模型")
         
@@ -70,9 +68,6 @@ async def list_models(api_key: str = Depends(verify_api_key)):
         }
     
     except Exception as e:
-        logger.error(f"获取模型列表失败: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取模型列表时发生错误: {str(e)}"
-        )
+        logger.error(f"获取模型列表失败: {str(e)}", exc_info=True)
+        raise LLMServiceException(f"获取模型列表时发生错误: {str(e)}")
 

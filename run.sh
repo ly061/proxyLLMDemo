@@ -38,15 +38,35 @@ else
     echo -e "${GREEN}虚拟环境已激活${NC}"
 fi
 
-# 检查依赖是否安装
-if ! python3 -c "import fastapi" &> /dev/null; then
-    echo -e "${YELLOW}检测到缺少依赖，正在安装...${NC}"
-    pip install -r requirements.txt --timeout 90000
+# 检查并安装依赖
+echo -e "${GREEN}检查依赖...${NC}"
+
+# 检查关键依赖
+MISSING_DEPS=false
+REQUIRED_PACKAGES=("fastapi" "uvicorn" "pydantic" "aiomysql" "redis" "cachetools")
+
+for package in "${REQUIRED_PACKAGES[@]}"; do
+    if ! python3 -c "import ${package}" &> /dev/null; then
+        MISSING_DEPS=true
+        break
+    fi
+done
+
+if [ "$MISSING_DEPS" = true ] || [ ! -f "venv/.installed" ] 2>/dev/null; then
+    echo -e "${YELLOW}正在安装/更新依赖...${NC}"
+    python3 -m pip install --upgrade pip --quiet
+    python3 -m pip install -r requirements.txt --timeout 90000
     if [ $? -ne 0 ]; then
-        echo -e "${RED}依赖安装失败，请检查requirements.txt${NC}"
+        echo -e "${RED}依赖安装失败，请检查requirements.txt和网络连接${NC}"
         exit 1
     fi
+    # 标记依赖已安装（如果存在venv目录）
+    if [ -d "venv" ] || [ -d ".venv" ]; then
+        touch venv/.installed 2>/dev/null || touch .venv/.installed 2>/dev/null || true
+    fi
     echo -e "${GREEN}依赖安装完成${NC}"
+else
+    echo -e "${GREEN}依赖已安装${NC}"
 fi
 
 # 检查.env文件

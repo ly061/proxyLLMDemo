@@ -20,7 +20,16 @@ class Settings(BaseSettings):
     # API认证配置
     API_KEYS: List[str] = Field(default_factory=list)  # 允许的API Key列表（已废弃，改用数据库）
     USE_DATABASE_AUTH: bool = True  # 是否使用数据库进行API Key认证
-    DATABASE_PATH: str = "data/api_keys.db"  # SQLite数据库路径
+    DATABASE_PATH: str = "data/api_keys.db"  # SQLite数据库路径（已废弃，改用MySQL）
+    # MySQL配置
+    MYSQL_HOST: str = "localhost"
+    MYSQL_PORT: int = 3306
+    MYSQL_USER: Optional[str] = None  # 必须通过环境变量提供
+    MYSQL_PASSWORD: Optional[str] = None  # 必须通过环境变量提供，不能硬编码
+    MYSQL_DATABASE: str = "sonic"
+    MYSQL_CHARSET: str = "utf8mb4"
+    MYSQL_POOL_SIZE: int = 10  # 连接池大小
+    MYSQL_MAX_OVERFLOW: int = 20  # 最大溢出连接数
     JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60 * 24  # 24小时
@@ -49,6 +58,7 @@ class Settings(BaseSettings):
     # 缓存配置
     CACHE_ENABLED: bool = True
     CACHE_TTL: int = 3600  # 缓存过期时间（秒）
+    CACHE_MAX_SIZE: int = 1000  # 缓存最大条目数
     
     # 日志配置
     LOG_LEVEL: str = "INFO"
