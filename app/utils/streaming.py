@@ -57,9 +57,9 @@ async def stream_chat_completion(
         if hasattr(adapter, 'client') and hasattr(adapter.client, 'chat') and hasattr(adapter.client.chat, 'completions'):
             stream = await adapter.client.chat.completions.create(**request_params)
             
-            # 发送流式数据
+            # 发送流式数据（使用异步迭代）
             full_content = ""
-            for chunk in stream:
+            async for chunk in stream:
                 if chunk.choices and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
                     if delta and delta.content:
@@ -82,7 +82,7 @@ async def stream_chat_completion(
             
             # 发送结束标记
             yield "data: [DONE]\n\n"
-            logger.info(f"流式响应完成: model={request.model}")
+            logger.info(f"流式响应完成: model={request.model}, total_length={len(full_content)}")
         else:
             # 如果不支持流式，返回错误
             error_data = {

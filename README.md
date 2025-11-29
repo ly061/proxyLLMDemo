@@ -155,13 +155,14 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/chat/completions" \
-  -H "X-API-Key: your-api-key-1" \
+  -H "X-API-Key: 1LtJU5J8KxkjryJtuRfdf1BIriTDV2DE" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-chat",
     "messages": [
       {"role": "user", "content": "你好，请介绍一下你自己"}
     ],
+    "stream": true,
     "temperature": 0.7
   }'
 ```
