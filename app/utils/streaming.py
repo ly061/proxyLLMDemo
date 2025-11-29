@@ -24,9 +24,9 @@ async def stream_chat_completion(
         SSE格式的数据块
     """
     try:
-        # 转换消息格式
+        # 转换消息格式（转换为字典格式，因为OpenAI SDK需要字典而不是Pydantic模型）
         messages = [
-            ChatMessage(role=msg["role"], content=msg["content"])
+            {"role": msg["role"], "content": msg["content"]}
             for msg in request.messages
         ]
         

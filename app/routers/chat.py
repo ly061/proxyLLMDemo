@@ -61,12 +61,41 @@ async def chat_completions(
         adapter = get_adapter(request.model)
         
         # 生成缓存键（如果启用缓存）
+        # 包含用户标识符（api_key_id）以确保不同用户的缓存隔离
         cache_key = None
         if settings.CACHE_ENABLED and not request.stream:
-            cache_key = f"chat:{cache_key_generator(request.model, request.messages, request.temperature)}"
+            api_key_id = user_info.get('api_key_id', 'anonymous')
+            cache_key = f"chat:{cache_key_generator(request.model, request.messages, request.temperature, api_key_id)}"
             cached_result = cache.get(cache_key)
             if cached_result:
                 logger.info("返回缓存结果")
+                # 即使从缓存返回，也要记录请求到数据库（用于审计跟踪）
+                if user_info.get('api_key_id') is not None and user_info.get('user_id') is not None:
+                    try:
+                        # 提取用户的问题（取最后一条user角色的消息）
+                        user_query = None
+                        if request.messages:
+                            # 从后往前查找最后一条user消息
+                            for msg in reversed(request.messages):
+                                if msg.get('role') == 'user':
+                                    user_query = msg.get('content', '')
+                                    break
+                            # 如果没找到user消息，取第一条消息的内容
+                            if not user_query and request.messages:
+                                user_query = request.messages[0].get('content', '')
+                        
+                        await record_request(
+                            api_key_id=user_info['api_key_id'],
+                            user_id=user_info['user_id'],
+                            model=cached_result.model if hasattr(cached_result, 'model') else request.model,
+                            user_query=user_query,
+                            prompt_tokens=0,  # 缓存命中，无token消耗
+                            completion_tokens=0,
+                            total_tokens=0
+                        )
+                        logger.debug("缓存命中请求已记录到数据库（token=0）")
+                    except Exception as e:
+                        logger.error(f"记录缓存命中请求失败: {str(e)}", exc_info=True)
                 return cached_result
         
         # 调用LLM（非流式）

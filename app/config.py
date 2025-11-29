@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     CACHE_TTL: int = 3600  # 缓存过期时间（秒）
     CACHE_MAX_SIZE: int = 1000  # 缓存最大条目数
     
+    # 任务规划配置
+    PLAN_MAX_TOKENS: int = 2000  # 规划任务最大token数
+    PLAN_DEFAULT_MAX_STEPS: int = 10  # 默认最大步骤数
+    PLAN_MIN_STEPS: int = 3  # 最小步骤数
+    PLAN_MAX_STEPS: int = 50  # 最大步骤数
+    PLAN_TASK_MAX_LENGTH: int = 2000  # 任务描述最大长度
+    
     # 日志配置
     LOG_LEVEL: str = "INFO"
     LOG_FILE: Optional[str] = None
