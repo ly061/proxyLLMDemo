@@ -22,7 +22,7 @@ class ChatCompletionRequest(BaseModel):
     messages: List[dict] = Field(..., description="消息列表")
     temperature: Optional[float] = Field(0.7, ge=0, le=2, description="温度参数")
     max_tokens: Optional[int] = Field(None, gt=0, description="最大token数")
-    stream: Optional[bool] = Field(False, description="是否流式返回")
+    stream: Optional[bool] = Field(False, description="是否流式返回（已禁用，默认非流式）")
     top_p: Optional[float] = Field(None, ge=0, le=1, description="Top-p采样")
     frequency_penalty: Optional[float] = Field(None, ge=-2, le=2, description="频率惩罚")
     presence_penalty: Optional[float] = Field(None, ge=-2, le=2, description="存在惩罚")
@@ -37,17 +37,10 @@ async def chat_completions(
     聊天完成接口（兼容OpenAI格式）
     
     支持DeepSeek和其他LLM提供商
-    支持流式响应（SSE）
+    默认使用非流式响应
     """
-    # 流式响应处理
-    if request.stream:
-        from fastapi.responses import StreamingResponse
-        from app.utils.streaming import stream_chat_completion
-        
-        return StreamingResponse(
-            stream_chat_completion(request, user_info),
-            media_type="text/event-stream"
-        )
+    # 强制使用非流式响应（忽略 stream 参数）
+    request.stream = False
     
     # 非流式响应
     try:
@@ -63,7 +56,7 @@ async def chat_completions(
         # 生成缓存键（如果启用缓存）
         # 包含用户标识符（api_key_id）以确保不同用户的缓存隔离
         cache_key = None
-        if settings.CACHE_ENABLED and not request.stream:
+        if settings.CACHE_ENABLED:
             api_key_id = user_info.get('api_key_id', 'anonymous')
             cache_key = f"chat:{cache_key_generator(request.model, request.messages, request.temperature, api_key_id)}"
             cached_result = cache.get(cache_key)
