@@ -2,7 +2,7 @@
 数据库连接和初始化 - MySQL版本
 """
 import aiomysql
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, List
 from datetime import datetime
 from app.config import settings
 from app.utils.logger import logger
@@ -121,6 +121,37 @@ async def init_db():
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
+            # 创建会话表
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    api_key_id INT NOT NULL,
+                    title VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE,
+                    INDEX idx_user_id (user_id),
+                    INDEX idx_api_key_id (api_key_id),
+                    INDEX idx_created_at (created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+            
+            # 创建会话消息表
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_messages (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    conversation_id INT NOT NULL,
+                    role VARCHAR(20) NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+                    INDEX idx_conversation_id (conversation_id),
+                    INDEX idx_created_at (created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+            
             await conn.commit()
             logger.info(f"数据库初始化完成: {settings.MYSQL_DATABASE}")
 
@@ -224,3 +255,254 @@ async def record_request(
                 await conn.commit()
     except Exception as e:
         logger.error(f"记录token消耗失败: {str(e)}")
+
+
+# ==================== 会话管理相关函数 ====================
+
+async def create_conversation(
+    user_id: int,
+    api_key_id: int,
+    title: Optional[str] = None
+) -> int:
+    """
+    创建新会话
+    
+    Args:
+        user_id: 用户ID
+        api_key_id: API Key ID
+        title: 会话标题（可选，如果不提供则自动生成）
+        
+    Returns:
+        会话ID
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            if not title:
+                title = "新对话"
+            await cursor.execute("""
+                INSERT INTO conversations (user_id, api_key_id, title)
+                VALUES (%s, %s, %s)
+            """, (user_id, api_key_id, title))
+            await conn.commit()
+            return cursor.lastrowid
+
+
+async def get_conversation(
+    conversation_id: int,
+    user_id: Optional[int] = None,
+    api_key_id: Optional[int] = None
+) -> Optional[dict]:
+    """
+    获取会话信息
+    
+    Args:
+        conversation_id: 会话ID
+        user_id: 用户ID（用于权限验证）
+        api_key_id: API Key ID（用于权限验证）
+        
+    Returns:
+        会话信息字典，如果不存在或无权访问返回None
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            query = "SELECT * FROM conversations WHERE id = %s"
+            params = [conversation_id]
+            
+            if user_id is not None:
+                query += " AND user_id = %s"
+                params.append(user_id)
+            if api_key_id is not None:
+                query += " AND api_key_id = %s"
+                params.append(api_key_id)
+            
+            await cursor.execute(query, tuple(params))
+            return await cursor.fetchone()
+
+
+async def get_conversation_messages(
+    conversation_id: int,
+    limit: Optional[int] = None
+) -> List[dict]:
+    """
+    获取会话的所有消息
+    
+    Args:
+        conversation_id: 会话ID
+        limit: 限制返回数量（可选）
+        
+    Returns:
+        消息列表
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            query = """
+                SELECT id, role, content, created_at
+                FROM conversation_messages
+                WHERE conversation_id = %s
+                ORDER BY created_at ASC
+            """
+            params = [conversation_id]
+            
+            if limit:
+                query += " LIMIT %s"
+                params.append(limit)
+            
+            await cursor.execute(query, tuple(params))
+            return await cursor.fetchall()
+
+
+async def add_message_to_conversation(
+    conversation_id: int,
+    role: str,
+    content: str
+) -> int:
+    """
+    添加消息到会话
+    
+    Args:
+        conversation_id: 会话ID
+        role: 消息角色（user, assistant, system）
+        content: 消息内容
+        
+    Returns:
+        消息ID
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("""
+                INSERT INTO conversation_messages (conversation_id, role, content)
+                VALUES (%s, %s, %s)
+            """, (conversation_id, role, content))
+            await conn.commit()
+            return cursor.lastrowid
+
+
+async def update_conversation_title(
+    conversation_id: int,
+    title: str,
+    user_id: Optional[int] = None,
+    api_key_id: Optional[int] = None
+) -> bool:
+    """
+    更新会话标题
+    
+    Args:
+        conversation_id: 会话ID
+        title: 新标题
+        user_id: 用户ID（用于权限验证）
+        api_key_id: API Key ID（用于权限验证）
+        
+    Returns:
+        是否更新成功
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            query = "UPDATE conversations SET title = %s WHERE id = %s"
+            params = [title, conversation_id]
+            
+            if user_id is not None:
+                query += " AND user_id = %s"
+                params.append(user_id)
+            if api_key_id is not None:
+                query += " AND api_key_id = %s"
+                params.append(api_key_id)
+            
+            await cursor.execute(query, tuple(params))
+            await conn.commit()
+            return cursor.rowcount > 0
+
+
+async def delete_conversation(
+    conversation_id: int,
+    user_id: Optional[int] = None,
+    api_key_id: Optional[int] = None
+) -> bool:
+    """
+    删除会话（级联删除所有消息）
+    
+    Args:
+        conversation_id: 会话ID
+        user_id: 用户ID（用于权限验证）
+        api_key_id: API Key ID（用于权限验证）
+        
+    Returns:
+        是否删除成功
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            query = "DELETE FROM conversations WHERE id = %s"
+            params = [conversation_id]
+            
+            if user_id is not None:
+                query += " AND user_id = %s"
+                params.append(user_id)
+            if api_key_id is not None:
+                query += " AND api_key_id = %s"
+                params.append(api_key_id)
+            
+            await cursor.execute(query, tuple(params))
+            await conn.commit()
+            return cursor.rowcount > 0
+
+
+async def list_conversations(
+    user_id: int,
+    api_key_id: Optional[int] = None,
+    limit: int = 20,
+    offset: int = 0
+) -> tuple[List[dict], int]:
+    """
+    获取用户的会话列表
+    
+    Args:
+        user_id: 用户ID
+        api_key_id: API Key ID（可选，用于过滤）
+        limit: 返回数量
+        offset: 偏移量
+        
+    Returns:
+        (会话列表, 总数)
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            # 构建查询条件
+            where_clause = "WHERE user_id = %s"
+            params = [user_id]
+            
+            if api_key_id is not None:
+                where_clause += " AND api_key_id = %s"
+                params.append(api_key_id)
+            
+            # 获取总数
+            count_query = f"SELECT COUNT(*) as total FROM conversations {where_clause}"
+            await cursor.execute(count_query, tuple(params))
+            total_result = await cursor.fetchone()
+            total = total_result['total'] if total_result else 0
+            
+            # 获取会话列表（包含消息数量）
+            list_query = f"""
+                SELECT 
+                    c.id as conversation_id,
+                    c.title,
+                    c.created_at,
+                    c.updated_at,
+                    COUNT(cm.id) as message_count
+                FROM conversations c
+                LEFT JOIN conversation_messages cm ON c.id = cm.conversation_id
+                {where_clause}
+                GROUP BY c.id
+                ORDER BY c.updated_at DESC
+                LIMIT %s OFFSET %s
+            """
+            params.extend([limit, offset])
+            await cursor.execute(list_query, tuple(params))
+            conversations = await cursor.fetchall()
+            
+            return conversations, total

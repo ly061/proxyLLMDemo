@@ -2,7 +2,12 @@
 配置管理模块
 """
 from typing import List, Optional
-from pydantic import BaseSettings, Field
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:
+    # 兼容旧版本 pydantic
+    from pydantic import BaseSettings
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -79,6 +84,8 @@ class Settings(BaseSettings):
         env_file = ".env"
         # env_file_encoding 在 pydantic-settings v1 中可能不支持，使用默认 UTF-8 编码
         case_sensitive = True
+        # pydantic v2 兼容性
+        extra = "ignore"
 
 
 # 全局配置实例
